@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>NEA SG Map</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+        <link rel="stylesheet" href="/static/css/theme.css" />
+    <style>
+            html, body { height: 100%; }
+            body { margin: 0; }
+            #app { height: 100vh; display: flex; flex-direction: column; }
+            #main { flex: 1; display: flex; min-height: 0; }
+            /* Ensure Leaflet map fills the card-body reliably */
+            #map { width: 100%; height: auto; flex: 1 1 auto; min-height: 0; }
+            #mapContainer { min-height: 0; }
+            #mapContainer .card, #mapContainer .card-body { height: 100%; }
+            #mapContainer .card-body { display: flex; flex-direction: column; }
+            .layer-toolbar { background: var(--bs-body-bg); }
+            #sidebar { background: var(--bs-body-bg); display: flex; flex-direction: column; }
+            .navbar-brand { font-weight: 700; letter-spacing: .2px; }
+            .legend-item { display: flex; align-items: center; margin-bottom: .25rem; }
+            .chat-history { flex: 1; overflow-y: auto; padding: 1rem; background: var(--bs-tertiary-bg); }
+            .loading-overlay { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(255,255,255,.55); z-index: 1000; }
+            .loading-overlay.show { display: flex; }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <nav class="navbar navbar-expand-lg navbar-dark brand-gradient shadow-sm">
+            <div class="container-fluid">
+                <span class="navbar-brand">NEA Singapore Map</span>
+                <div class="d-flex gap-2">
+                    <button id="resetViewBtn" class="btn btn-outline-light btn-sm">Reset View</button>
+                    <button id="themeToggleBtn" class="btn btn-outline-light btn-sm" title="Toggle theme">Light</button>
+                </div>
+            </div>
+        </nav>
+
+            <div id="main" class="position-relative">
+                <div id="mapContainer" class="p-3 flex-grow-1 d-flex">
+                    <div class="card shadow-sm w-100 h-100">
+                        <div class="card-body p-0 position-relative h-100">
+                            <!-- Layer controls as a modern dropdown -->
+                            <div class="layer-toolbar border-bottom p-2 d-flex align-items-center justify-content-end">
+                                <div class="btn-group">
+                                    <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                                        Layers
+                                    </button>
+                                    <div class="dropdown-menu dropdown-menu-end p-3 shadow-sm layers-dropdown-menu">
+                                        <div class="mb-3">
+                                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                                <h6 class="mb-0">Planning Areas (2019)</h6>
+                                                <div class="form-check form-switch ms-2">
+                                                    <input class="form-check-input" type="checkbox" id="togglePlanning" role="switch" aria-label="Toggle Planning Areas layer">
+                                                </div>
+                                            </div>
+                                            <div class="d-flex align-items-center gap-2">
+                                                <button id="fitPlanningBtn" class="btn btn-outline-primary btn-sm" disabled>Fit</button>
+                                                <button id="reloadPlanningBtn" class="btn btn-outline-secondary btn-sm">Reload</button>
+                                                <span class="ms-auto small text-secondary">Features <span class="badge rounded-pill text-bg-secondary" id="countPlanning">0</span></span>
+                                            </div>
+                                        </div>
+
+                                        <div class="pt-3 border-top mb-3">
+                                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                                <h6 class="mb-0">Dengue Hotspots</h6>
+                                                <div class="form-check form-switch ms-2">
+                                                    <input class="form-check-input" type="checkbox" id="toggleDengue" checked role="switch" aria-label="Toggle Dengue layer">
+                                                </div>
+                                            </div>
+                                            <div class="d-flex align-items-center gap-2">
+                                                <button id="fitDengueBtn" class="btn btn-outline-danger btn-sm">Fit</button>
+                                                <button id="reloadDengueBtn" class="btn btn-outline-secondary btn-sm">Reload</button>
+                                                <span class="ms-auto small text-secondary">Features <span class="badge rounded-pill text-bg-secondary" id="countDengue">0</span></span>
+                                            </div>
+                                        </div>
+
+                                        <div class="pt-3 border-top">
+                                            <h6 class="mb-2">Legend</h6>
+                                            <div class="legend-item"><span class="legend-swatch legend-planning"></span>Planning Area</div>
+                                            <div class="legend-item"><span class="legend-swatch legend-dengue"></span>Dengue Cluster</div>
+                                            <hr class="my-2" />
+                                            <small class="text-secondary">Basemap: <img class="logo-om" src="https://www.onemap.gov.sg/web-assets/images/logo/om_logo.png" alt="OneMap logo" /> OneMap &copy; contributors | Singapore Land Authority</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="map" class="d-flex"></div>
+                            <div id="overlaySpinner" class="loading-overlay">
+                                <div class="spinner-border text-primary" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <aside id="sidebar" class="d-flex flex-column">
+                    <div class="chat-header d-flex align-items-center gap-2 p-3 border-bottom">
+                        <div class="avatar avatar-bot" aria-hidden="true">N</div>
+                        <div>
+                            <div class="fw-semibold">NEA Bot</div>
+                            <div class="small text-secondary">Here to help with hotspots and planning areas</div>
+                        </div>
+                    </div>
+                    <div id="chatHistory" class="chat-history"></div>
+                    <div class="p-2 border-top">
+                        <div class="input-group">
+                            <input id="chatInput" type="text" class="form-control" placeholder="Ask the assistant…" />
+                            <button id="chatSendBtn" class="btn btn-primary">Send</button>
+                        </div>
+                    </div>
+                </aside>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script>
+        // Map setup
+        const singaporeBounds = L.latLngBounds([1.15, 103.6], [1.48, 104.1]);
+        const map = L.map('map', { zoomControl: true }).fitBounds(singaporeBounds.pad(0.05));
+        const baseAttribution = '<img src="https://www.onemap.gov.sg/web-assets/images/logo/om_logo.png" style="height:16px;width:16px;"/>\u00a0<a href="https://www.onemap.gov.sg/" target="_blank" rel="noopener noreferrer">OneMap</a>\u00a0&copy;\u00a0contributors\u00a0|\u00a0<a href="https://www.sla.gov.sg/" target="_blank" rel="noopener noreferrer">Singapore Land Authority</a>';
+        const dayTiles = L.tileLayer('https://www.onemap.gov.sg/maps/tiles/Default/{z}/{x}/{y}.png', {
+            detectRetina: true,
+            maxZoom: 19,
+            minZoom: 11,
+            attribution: baseAttribution
+        });
+        const nightTiles = L.tileLayer('https://www.onemap.gov.sg/maps/tiles/Night/{z}/{x}/{y}.png', {
+            detectRetina: true,
+            maxZoom: 19,
+            minZoom: 11,
+            attribution: baseAttribution
+        });
+        let currentBase = dayTiles.addTo(map);
+        function useBase(mode) {
+            const nextBase = (mode === 'dark') ? nightTiles : dayTiles;
+            if (currentBase !== nextBase) {
+                if (map.hasLayer(currentBase)) map.removeLayer(currentBase);
+                currentBase = nextBase.addTo(map);
+            }
+        }
+        L.control.scale({ metric: true, imperial: false }).addTo(map);
+
+        // Layers
+        const planningAreaLayer = L.geoJSON(null, {
+            style: () => ({ color: '#3388ff', weight: 1, fillOpacity: 0.05 }),
+            onEachFeature: (feature, layer) => {
+                if (feature.properties && feature.properties.name) {
+                    layer.bindPopup('Planning Area: ' + feature.properties.name);
+                }
+            }
+        });
+
+        const dengueLayer = L.geoJSON(null, {
+            style: () => ({ color: '#dc3545', weight: 2, fillOpacity: 0.35 }),
+            onEachFeature: (feature, layer) => {
+                const p = feature.properties || {};
+                const title = p.DESCRIPTION || p.NAME || 'Dengue Cluster';
+                layer.bindPopup(title);
+            }
+        }).addTo(map);
+
+        const overlaySpinner = document.getElementById('overlaySpinner');
+        function setLoading(isLoading) {
+            overlaySpinner.classList.toggle('show', !!isLoading);
+        }
+
+        // Data loaders
+        async function loadPlanning() {
+            setLoading(true);
+            try {
+                const r = await fetch('/api/planning-areas?year=2019');
+                const fc = await r.json();
+                planningAreaLayer.clearLayers();
+                if (fc && fc.features) planningAreaLayer.addData(fc);
+                document.getElementById('countPlanning').textContent = planningAreaLayer.getLayers().length;
+            } catch (e) { console.error(e); }
+            finally { setLoading(false); }
+        }
+
+        async function loadDengue() {
+            setLoading(true);
+            try {
+                const r = await fetch('/api/dengue-clusters');
+                const fc = await r.json();
+                dengueLayer.clearLayers();
+                if (fc && fc.features) dengueLayer.addData(fc);
+                document.getElementById('countDengue').textContent = dengueLayer.getLayers().length;
+            } catch (e) { console.error(e); }
+            finally { setLoading(false); }
+        }
+
+        // Initial loads
+        loadPlanning();
+        loadDengue();
+
+        // Sidebar controls
+        const togglePlanning = document.getElementById('togglePlanning');
+        const toggleDengue = document.getElementById('toggleDengue');
+        const fitPlanningBtn = document.getElementById('fitPlanningBtn');
+        const fitDengueBtn = document.getElementById('fitDengueBtn');
+        const reloadPlanningBtn = document.getElementById('reloadPlanningBtn');
+        const reloadDengueBtn = document.getElementById('reloadDengueBtn');
+
+        togglePlanning.addEventListener('change', () => {
+            if (togglePlanning.checked) {
+                planningAreaLayer.addTo(map);
+                const b = planningAreaLayer.getBounds();
+                if (b && b.isValid()) map.fitBounds(b, { padding: [20, 20] });
+                fitPlanningBtn.disabled = false;
+            } else {
+                map.removeLayer(planningAreaLayer);
+                fitPlanningBtn.disabled = true;
+            }
+        });
+
+        toggleDengue.addEventListener('change', () => {
+            if (toggleDengue.checked) {
+                dengueLayer.addTo(map);
+                const b = dengueLayer.getBounds();
+                if (b && b.isValid()) map.fitBounds(b, { padding: [20, 20] });
+            } else {
+                map.removeLayer(dengueLayer);
+            }
+        });
+
+        fitPlanningBtn.addEventListener('click', () => {
+            const b = planningAreaLayer.getBounds();
+            if (b && b.isValid()) map.fitBounds(b, { padding: [20, 20] });
+        });
+        fitDengueBtn.addEventListener('click', () => {
+            const b = dengueLayer.getBounds();
+            if (b && b.isValid()) map.fitBounds(b, { padding: [20, 20] });
+        });
+        reloadPlanningBtn.addEventListener('click', loadPlanning);
+        reloadDengueBtn.addEventListener('click', loadDengue);
+
+        document.getElementById('resetViewBtn').addEventListener('click', () => {
+            map.fitBounds(singaporeBounds.pad(0.05));
+        });
+
+        // Theme toggle (light/dark) for Bootstrap AND basemap (Default/Night)
+        const themeToggleBtn = document.getElementById('themeToggleBtn');
+        themeToggleBtn.addEventListener('click', () => {
+            const html = document.documentElement;
+            const current = html.getAttribute('data-bs-theme') || 'light';
+            const next = current === 'light' ? 'dark' : 'light';
+            html.setAttribute('data-bs-theme', next);
+            themeToggleBtn.textContent = next === 'light' ? 'Light' : 'Dark';
+            useBase(next);
+        });
+        // Ensure initial base aligns to current theme
+        useBase(document.documentElement.getAttribute('data-bs-theme') || 'light');
+
+        // Chat
+        const chatHistory = document.getElementById('chatHistory');
+        const chatInput = document.getElementById('chatInput');
+        const chatSendBtn = document.getElementById('chatSendBtn');
+
+        function pushChat(role, text) {
+            const row = document.createElement('div');
+            row.className = 'chat-row ' + (role === 'user' ? 'justify-content-end' : '');
+
+            const avatar = document.createElement('div');
+            avatar.className = 'avatar ' + (role === 'user' ? 'avatar-user' : 'avatar-bot');
+            avatar.textContent = role === 'user' ? 'U' : 'N';
+
+            const bubbleWrap = document.createElement('div');
+            bubbleWrap.className = 'bubble-wrap';
+            const bubble = document.createElement('div');
+            bubble.className = 'chat-bubble ' + (role === 'user' ? 'chat-user ms-auto' : 'chat-bot');
+            bubble.textContent = text;
+            bubbleWrap.appendChild(bubble);
+
+            if (role === 'user') {
+                row.appendChild(bubbleWrap);
+                row.appendChild(avatar);
+            } else {
+                row.appendChild(avatar);
+                row.appendChild(bubbleWrap);
+            }
+
+            chatHistory.appendChild(row);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+        }
+
+        function showTyping() {
+            const row = document.createElement('div');
+            row.className = 'chat-row typing-row';
+            const avatar = document.createElement('div');
+            avatar.className = 'avatar avatar-bot';
+            avatar.textContent = 'N';
+            const bubbleWrap = document.createElement('div');
+            bubbleWrap.className = 'bubble-wrap';
+            const bubble = document.createElement('div');
+            bubble.className = 'chat-bubble chat-bot';
+            const dots = document.createElement('div');
+            dots.className = 'typing';
+            dots.innerHTML = '<span class="dot"></span><span class="dot"></span><span class="dot"></span>';
+            bubble.appendChild(dots);
+            bubbleWrap.appendChild(bubble);
+            row.appendChild(avatar);
+            row.appendChild(bubbleWrap);
+            chatHistory.appendChild(row);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+            return row;
+        }
+
+        function ensureOn(layer) { if (!map.hasLayer(layer)) layer.addTo(map); }
+        function ensureOff(layer) { if (map.hasLayer(layer)) map.removeLayer(layer); }
+
+        async function sendMessage() {
+            const message = chatInput.value.trim();
+            if (!message) return;
+            chatInput.value = '';
+            pushChat('user', message);
+            chatSendBtn.disabled = true;
+            const typingEl = showTyping();
+            try {
+                const r = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message }) });
+                const data = await r.json();
+                typingEl.remove();
+                pushChat('bot', data && data.reply ? data.reply : '...');
+
+                const intents = (data && data.intents) || [];
+                intents.forEach(it => {
+                    if (it.type === 'clear_all') {
+                        ensureOff(dengueLayer);
+                        ensureOff(planningAreaLayer);
+                    }
+                    if (it.type === 'show_layer' && it.layer === 'dengue') {
+                        ensureOn(dengueLayer);
+                        const b = dengueLayer.getBounds();
+                        if (b && b.isValid()) map.fitBounds(b, { padding: [20, 20] });
+                        toggleDengue.checked = true;
+                    }
+                    if (it.type === 'hide_layer' && it.layer === 'dengue') {
+                        ensureOff(dengueLayer);
+                        toggleDengue.checked = false;
+                    }
+                    if (it.type === 'show_layer' && it.layer === 'planning') {
+                        ensureOn(planningAreaLayer);
+                        const b2 = planningAreaLayer.getBounds();
+                        if (b2 && b2.isValid()) map.fitBounds(b2, { padding: [20, 20] });
+                        togglePlanning.checked = true;
+                    }
+                    if (it.type === 'hide_layer' && it.layer === 'planning') {
+                        ensureOff(planningAreaLayer);
+                        togglePlanning.checked = false;
+                    }
+                });
+
+            } catch (err) {
+                console.error(err);
+                const safeRemove = () => { try { typingEl.remove(); } catch {} };
+                safeRemove();
+                pushChat('bot', "Sorry, I couldn't process that.");
+            } finally {
+                chatSendBtn.disabled = false;
+            }
+        }
+
+        chatSendBtn.addEventListener('click', sendMessage);
+        chatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        // Welcome message (dynamic from Azure OpenAI based on API data)
+        (async () => {
+            try {
+                const r = await fetch('/api/welcome');
+                const data = await r.json();
+                pushChat('bot', data && data.reply ? data.reply : 'Welcome!');
+            } catch {
+                pushChat('bot', 'Welcome!');
+            }
+        })();
+    </script>
+</body>
+</html>
