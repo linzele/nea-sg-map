@@ -10,7 +10,6 @@ Interactive Singapore map that highlights dengue hotspots with red polygons and 
 - Assistant-style chat in the right sidebar
   - Map tool-calling (show/hide layers)
   - Dynamic grounding from live API data
-- Modern UI with Bootstrap 5
 
 ## Prerequisites
 - Python 3.9+
