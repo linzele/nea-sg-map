@@ -44,6 +44,7 @@ def get_layer_registry() -> Dict[str, Dict[str, object]]:
             "context_builder": lambda max_items=100: _planning_context_builder(max_items=max_items),
             "total_regex": r":\s*(\d+)\s*total",
         },
+        # For myself to take note
         # To add a new layer in the future, register here with
         # "layer_key": {"title": "...", "synonyms": ["..."], "context_builder": callable, "total_regex": r"..."}
     }
