@@ -1,0 +1,60 @@
+# Environment files (secrets)
+.env
+.env.*
+!.env.example
+
+# Python cache and build artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+.eggs/
+build/
+dist/
+pip-wheel-metadata/
+*.spec
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Testing/cache
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.cache/
+.mypy_cache/
+.pytype/
+.ruff_cache/
+
+# Flask/instance
+instance/
+
+# Logs
+*.log
+logs/
+
+# Editors/IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Node (if any frontend tooling is added later)
+node_modules/
+
+# dotenv variants
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
